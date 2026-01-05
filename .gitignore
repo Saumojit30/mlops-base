@@ -1,0 +1,25 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Data
+data/
+*.csv
+
+# Models (Ignore large weights, but KEEP metrics)
+*.joblib
+*.h5
+*.pt
+
+# Ignore everything inside models directory...
+models/*
+# ...except for metrics files!
+!models/*metrics.json
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
