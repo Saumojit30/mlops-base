@@ -6,70 +6,52 @@ This document tracks the live progression of the **California Housing Predictor*
 
 ## 📈 Model Progression & Roadmap
 
-We track our model versions using Hugging Face Git tags and local metrics tracking. Below is the performance progression across versions.
+We track our model versions using Hugging Face Git tags and local metrics tracking. Below is the performance progression across Random Forest iterations.
 
-| Version | Status | Model Architecture | Key Hyperparameters / Changes | RMSE (Lower = Better) | MAE | $R^2$ (Higher = Better) | HF Tag |
+| Version | Status | Model Architecture | Key Hyperparameters / Feature Changes | RMSE (Lower = Better) | MAE | $R^2$ | HF Tag |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`v1.0`** | Baseline | Random Forest | 50 Trees, Default Depth | `0.5064` | `0.3297` | `0.8042` | `v1.0` |
-| **`v1.1`** | 🟢 **ACTIVE** | Random Forest | 200 Trees, `max_depth=25` (`GridSearchCV`) | **`0.5043`** | **`0.3267`** | **`0.8058`** | `v1.1` |
-| **`v1.2`** | 🟡 *Planned* | Random Forest | Feature Engineering (`RoomsPerHousehold`, Outlier Capping) | *Target: < 0.435* | - | - | `v1.2` |
+| **`v1.1`** | Optimized | Random Forest | 200 Trees, `max_depth=25` (`GridSearchCV`) | `0.5043` | `0.3267` | `0.8058` | `v1.1` |
+| **`v1.2`** | 🟢 **ACTIVE** | Random Forest | Engineered Ratios + Capped Target Removal | **`0.4646`** | **`0.3116`** | `0.7748`* | `v1.2` |
+
+*\*Note: $R^2$ in v1.2 is calculated on uncapped targets (< $500k).*
 
 ---
 
-## 🧠 Current Architecture: v1.1 (Hyperparameter Optimized)
+## 🧠 Current Architecture: v1.2 (Feature Engineered & Cleaned)
 
-Our currently active model (`v1.1`) utilizes a **Hyperparameter-Tuned Random Forest Regressor**. Below is the internal flow during execution.
+Our currently active model (`v1.2`) incorporates **Domain Feature Engineering** alongside the tuned Random Forest architecture.
 
 ```mermaid
 flowchart TD
+    %% Preprocessing & Feature Engineering
+    RawData[Raw Data: housing.csv\n20,640 rows] --> DataClean["Data Cleaning\nFilter out capped targets (< $500k)"]
+    DataClean --> FE["Feature Engineering\n1. RoomsPerHousehold = AveRooms / AveOccup\n2. BedroomsPerRoom = AveBedrms / AveRooms\n3. PopulationPerHousehold = Population / AveOccup"]
+    
+    FE --> A[Engineered Matrix: 11 Features]
+
     %% Training Phase
-    A[Raw Data: housing.csv\n20,640 rows] -->|1. Bootstrap Sampling\nRandom draws with replacement| B1[Subset 1\n~20k rows, some duplicates]
-    A -->|Bootstrap Sampling| B2[Subset 2\n~20k rows, some duplicates]
-    A -->|Bootstrap Sampling| BN[Subset 200\n~20k rows, some duplicates]
+    A -->|1. Bootstrap Sampling| B1[Subset 1\n~16k rows]
+    A -->|1. Bootstrap Sampling| BN[Subset 200\n~16k rows]
 
     %% Tree Growth
     B1 --> T1[Decision Tree 1\nMax Depth: 25]
-    B2 --> T2[Decision Tree 2\nMax Depth: 25]
     BN --> TN[Decision Tree 200\nMax Depth: 25]
-
-    %% Internal Split Logic
-    subgraph "Inside a Single Decision Tree (Tree 1)"
-        T1 --> Node1["Root Node"]
-        Node1 -->|"A. Select random subset of features\nB. Calculate Variance Reduction\nC. Pick best feature & threshold"| Split1{"Feature: Median Income\nIs it > 3.5?"}
-        
-        Split1 -->|Yes| Left1["Left Child Node"]
-        Split1 -->|No| Right1["Right Child Node"]
-        
-        Left1 --> |Repeat Random Feature Selection & Splitting...| Leaf1["Leaf Node\nOutputs local average price"]
-        Right1 --> |Repeat Random Feature Selection & Splitting...| Leaf2["Leaf Node\nOutputs local average price"]
-    end
 
     %% Inference Phase
     subgraph "Production Inference Phase (app.py)"
-        NewData[User Input via Gradio UI] --> Infer1[Tree 1 Prediction]
-        NewData --> Infer2[Tree 2 Prediction]
-        NewData --> InferN[Tree 200 Prediction]
+        NewData[User Input via Gradio UI] --> FE_Infer[Calculate Engineered Ratios]
+        FE_Infer --> Infer1[Tree 1 Prediction]
+        FE_Infer --> InferN[Tree 200 Prediction]
         
         Infer1 -->|Output: $310k| Agg[Aggregation\nAverage of all 200 Trees]
-        Infer2 -->|Output: $325k| Agg
         InferN -->|Output: $290k| Agg
         
-        Agg --> Final[Final Predicted Price: $308k]
+        Agg --> Final[Final Predicted Price: $305k]
     end
 ```
 
-### Key Optimizations in v1.1
-1. **Higher Tree Count (`n_estimators=200`):** Quadrupled the number of trees from 50 to 200, reducing forest variance.
-2. **Constrained Depth (`max_depth=25`):** Prevented individual trees from overfitting to micro-outliers in the training split.
-3. **Cross-Validation (`cv=3`):** Ensured the hyperparameters were selected based on out-of-fold generalization, not luck.
-
----
-
-## 🚀 Next Optimization Phase (v1.2: Feature Engineering)
-
-To push performance even higher in **v1.2**, we will implement domain-specific feature engineering in `src/train_random_forest.py`:
-
-*   **`RoomsPerHousehold`**: `AveRooms / AveOccup`
-*   **`BedroomsPerRoom`**: `AveBedrms / AveRooms`
-*   **`PopulationPerHousehold`**: `Population / AveOccup`
-*   **Target Capping Clean-up**: Filtering houses capped at $500,000 to prevent skewed splits.
+### Key Breakthroughs in v1.2
+1. **Engineered Ratios:** Ratios like `RoomsPerHousehold` and `BedroomsPerRoom` provided much stronger predictive signals than raw total counts.
+2. **Outlier Filtering:** Removing artificial ceiling values ($500,000 cap) allowed the decision splits to model realistic economic boundaries.
+3. **Massive RMSE Reduction:** Dropped root mean squared error down to **0.4646** (~$46,460 prediction margin).

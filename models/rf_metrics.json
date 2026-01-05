@@ -1,12 +1,12 @@
 {
-    "version": "v1.1",
-    "best_params": {
-        "regressor__max_depth": 25,
-        "regressor__min_samples_leaf": 1,
-        "regressor__min_samples_split": 2,
-        "regressor__n_estimators": 200
-    },
-    "rmse": 0.504380214955438,
-    "mae": 0.32674142268102563,
-    "r2": 0.8058625929288115
+    "version": "v1.2",
+    "features_added": [
+        "RoomsPerHousehold",
+        "BedroomsPerRoom",
+        "PopulationPerHousehold"
+    ],
+    "data_cleaning": "Target capped values (<5.0) removed",
+    "rmse": 0.4646748605695484,
+    "mae": 0.31162160546944356,
+    "r2": 0.7747819991594735
 }

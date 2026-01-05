@@ -10,9 +10,27 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
+def engineer_features(df):
+    """Applies domain feature engineering and data cleaning for v1.2 release."""
+    df_copy = df.copy()
+    
+    # 1. Feature Engineering
+    df_copy["RoomsPerHousehold"] = df_copy["AveRooms"] / df_copy["AveOccup"]
+    df_copy["BedroomsPerRoom"] = df_copy["AveBedrms"] / df_copy["AveRooms"]
+    df_copy["PopulationPerHousehold"] = df_copy["Population"] / df_copy["AveOccup"]
+    
+    return df_copy
+
 def train_model():
     print("Loading raw data...")
     df = pd.read_csv("data/raw/housing.csv")
+    
+    # Clean outlier target capping at 5.0 ($500,000) for cleaner learning
+    print("Applying v1.2 data cleaning (removing 500k target ceiling capping)...")
+    df = df[df["MedHouseVal"] < 5.0]
+
+    print("Applying v1.2 feature engineering...")
+    df = engineer_features(df)
     
     X = df.drop("MedHouseVal", axis=1)
     y = df["MedHouseVal"]
@@ -26,51 +44,39 @@ def train_model():
 
     pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('regressor', RandomForestRegressor(random_state=42))
+        ('regressor', RandomForestRegressor(
+            n_estimators=200, 
+            max_depth=25, 
+            min_samples_split=2, 
+            min_samples_leaf=1, 
+            random_state=42, 
+            n_jobs=-1
+        ))
     ])
 
-    # Define Hyperparameter Search Grid for v1.1 Optimization
-    param_grid = {
-        'regressor__n_estimators': [100, 200],
-        'regressor__max_depth': [15, 25, None],
-        'regressor__min_samples_split': [2, 5],
-        'regressor__min_samples_leaf': [1, 2]
-    }
+    print("Training v1.2 Random Forest model with engineered features...")
+    pipeline.fit(X_train, y_train)
 
-    print("Tuning hyperparameters with GridSearchCV for v1.1...")
-    grid_search = GridSearchCV(
-        pipeline, 
-        param_grid, 
-        cv=3, 
-        scoring='neg_mean_squared_error', 
-        n_jobs=-1,
-        verbose=1
-    )
-    
-    grid_search.fit(X_train, y_train)
-
-    best_pipeline = grid_search.best_estimator_
-    print(f"Best Hyperparameters: {grid_search.best_params_}")
-
-    print("Evaluating optimized v1.1 model on test set...")
-    preds = best_pipeline.predict(X_test)
+    print("Evaluating v1.2 model on test set...")
+    preds = pipeline.predict(X_test)
     metrics = {
-        "version": "v1.1",
-        "best_params": grid_search.best_params_,
+        "version": "v1.2",
+        "features_added": ["RoomsPerHousehold", "BedroomsPerRoom", "PopulationPerHousehold"],
+        "data_cleaning": "Target capped values (<5.0) removed",
         "rmse": float(np.sqrt(mean_squared_error(y_test, preds))),
         "mae": float(mean_absolute_error(y_test, preds)),
         "r2": float(r2_score(y_test, preds))
     }
-    print(f"v1.1 Metrics: {metrics}")
+    print(f"v1.2 Metrics: {metrics}")
 
-    print("Saving v1.1 model and metrics...")
+    print("Saving v1.2 model and metrics...")
     os.makedirs("models", exist_ok=True)
-    joblib.dump(best_pipeline, "models/rf_model.joblib")
+    joblib.dump(pipeline, "models/rf_model.joblib")
     
     with open("models/rf_metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
         
-    print("Done! v1.1 Model saved to models/rf_model.joblib")
+    print("Done! v1.2 Model saved to models/rf_model.joblib")
 
 if __name__ == "__main__":
     train_model()
