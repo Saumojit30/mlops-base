@@ -1,57 +1,73 @@
 # Project Progression & Model Architecture
 
-This document tracks the live progression of the **California Housing Predictor** project. It serves as both a historical log of model improvements (version control) and a technical breakdown of the underlying architecture currently deployed.
+This document tracks the live progression of the **California Housing Predictor** project. It serves as both a historical log of model improvements (version control) and a technical breakdown of the underlying architectures deployed across version releases.
 
 ---
 
 ## 📈 Model Progression & Roadmap
 
-We track our model versions using Hugging Face Git tags and local metrics tracking. Below is the performance progression across Random Forest iterations.
+We track our model versions using Hugging Face Git tags and local metrics tracking. Below is the full performance progression across Random Forest and XGBoost iterations.
 
 | Version | Status | Model Architecture | Key Hyperparameters / Feature Changes | RMSE (Lower = Better) | MAE | $R^2$ | HF Tag |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`v1.0`** | Baseline | Random Forest | 50 Trees, Default Depth | `0.5064` | `0.3297` | `0.8042` | `v1.0` |
 | **`v1.1`** | Optimized | Random Forest | 200 Trees, `max_depth=25` (`GridSearchCV`) | `0.5043` | `0.3267` | `0.8058` | `v1.1` |
-| **`v1.2`** | 🟢 **ACTIVE** | Random Forest | Engineered Ratios + Capped Target Removal | **`0.4646`** | **`0.3116`** | `0.7748`* | `v1.2` |
-
-*\*Note: $R^2$ in v1.2 is calculated on uncapped targets (< $500k).*
+| **`v1.2`** | RF Active | Random Forest | Engineered Ratios + Outlier Capping Cleaned | `0.4646` | `0.3116` | `0.7748` | `v1.2` |
+| **`v2.0`** | 🟢 **ACTIVE** | XGBoost Regressor | Sequential Boosting (300 Trees, `lr=0.05`) | **`0.4208`** | **`0.2857`** | **`0.8153`** | `v2.0` |
 
 ---
 
-## 🧠 Current Architecture: v1.2 (Feature Engineered & Cleaned)
+## 🧠 Architecture Section 1: Random Forest (v1.x Series)
 
-Our currently active model (`v1.2`) incorporates **Domain Feature Engineering** alongside the tuned Random Forest architecture.
+Our `v1.x` models utilize **Bootstrap Aggregating (Bagging)** and **Feature Randomness** across independent decision trees.
 
 ```mermaid
 flowchart TD
-    %% Preprocessing & Feature Engineering
-    RawData[Raw Data: housing.csv\n20,640 rows] --> DataClean["Data Cleaning\nFilter out capped targets (< $500k)"]
-    DataClean --> FE["Feature Engineering\n1. RoomsPerHousehold = AveRooms / AveOccup\n2. BedroomsPerRoom = AveBedrms / AveRooms\n3. PopulationPerHousehold = Population / AveOccup"]
-    
-    FE --> A[Engineered Matrix: 11 Features]
+    RawData[Raw Data: housing.csv] --> FE["Feature Engineering\nRoomsPerHousehold, BedroomsPerRoom, etc."]
+    FE --> A[Engineered Matrix]
 
-    %% Training Phase
-    A -->|1. Bootstrap Sampling| B1[Subset 1\n~16k rows]
-    A -->|1. Bootstrap Sampling| BN[Subset 200\n~16k rows]
+    A -->|1. Bootstrap Sampling| B1[Subset 1]
+    A -->|1. Bootstrap Sampling| BN[Subset 200]
 
-    %% Tree Growth
-    B1 --> T1[Decision Tree 1\nMax Depth: 25]
-    BN --> TN[Decision Tree 200\nMax Depth: 25]
+    B1 --> T1[Decision Tree 1]
+    BN --> TN[Decision Tree 200]
 
-    %% Inference Phase
-    subgraph "Production Inference Phase (app.py)"
-        NewData[User Input via Gradio UI] --> FE_Infer[Calculate Engineered Ratios]
-        FE_Infer --> Infer1[Tree 1 Prediction]
-        FE_Infer --> InferN[Tree 200 Prediction]
-        
-        Infer1 -->|Output: $310k| Agg[Aggregation\nAverage of all 200 Trees]
-        InferN -->|Output: $290k| Agg
-        
-        Agg --> Final[Final Predicted Price: $305k]
+    subgraph "Parallel Aggregation (Random Forest)"
+        T1 -->|Pred 1| Agg[Average Predictions]
+        TN -->|Pred 200| Agg
     end
+    
+    Agg --> FinalRF[Random Forest Prediction]
 ```
 
-### Key Breakthroughs in v1.2
-1. **Engineered Ratios:** Ratios like `RoomsPerHousehold` and `BedroomsPerRoom` provided much stronger predictive signals than raw total counts.
-2. **Outlier Filtering:** Removing artificial ceiling values ($500,000 cap) allowed the decision splits to model realistic economic boundaries.
-3. **Massive RMSE Reduction:** Dropped root mean squared error down to **0.4646** (~$46,460 prediction margin).
+---
+
+## ⚡ Architecture Section 2: Major Version 2.0 (XGBoost Gradient Boosting)
+
+Our currently active flagship model (`v2.0`) utilizes **Gradient Boosted Decision Trees (GBDT)**. Unlike Random Forest where trees are built independently in parallel, XGBoost builds trees **sequentially**, where each new tree specifically learns to correct the residual errors made by the previous trees.
+
+```mermaid
+flowchart TD
+    %% Input Data
+    Input[Engineered Input Data] --> Tree1["Tree 1 (Base Model)\nPredicts Initial Baseline"]
+    
+    %% Sequential Residual Learning Loop
+    subgraph "Sequential Residual Boosting Pipeline"
+        Tree1 --> Res1["Calculate Residual Errors 1\nResidual = Actual Price - Tree 1 Output"]
+        Res1 --> Tree2["Tree 2 (Fits on Residuals 1)\nLearns to fix Tree 1 mistakes"]
+        
+        Tree2 --> Res2["Calculate Residual Errors 2"]
+        Res2 --> Tree3["Tree 3 (Fits on Residuals 2)"]
+        
+        Tree3 --> Loop["... Repeat for 300 Trees ..."]
+    end
+
+    %% Summation & Shrinkage
+    Loop --> Sum["Weighted Sum of All Trees\nOutput = Tree1 + lr * Tree2 + lr * Tree3 + ... + lr * Tree300"]
+    Sum --> FinalXGB["Final XGBoost Prediction\nRMSE: 0.4208"]
+```
+
+### Why v2.0 XGBoost Achieved the Best Performance
+1. **Sequential Error Minimization:** Rather than averaging random guesses, each of the 300 trees directly targets the prediction error of the ensemble before it.
+2. **Learning Rate Shrinkage (`lr=0.05`):** Scales the contribution of each tree, preventing individual trees from dominating the model and avoiding overfitting.
+3. **Subsampling (`subsample=0.8`, `colsample_bytree=0.8`):** Prevents individual features from over-influencing splits, resulting in a dramatic drop in RMSE to **0.4208** (our best score yet!).
