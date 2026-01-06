@@ -1,14 +1,15 @@
 {
-    "version": "v2.0",
-    "algorithm": "XGBoost Regressor",
-    "params": {
-        "n_estimators": 300,
-        "learning_rate": 0.05,
-        "max_depth": 6,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8
+    "version": "v2.1",
+    "algorithm": "XGBoost Regressor (Tuned)",
+    "best_params": {
+        "regressor__subsample": 0.9,
+        "regressor__n_estimators": 500,
+        "regressor__max_depth": 6,
+        "regressor__learning_rate": 0.05,
+        "regressor__gamma": 0,
+        "regressor__colsample_bytree": 0.8
     },
-    "rmse": 0.42084411056518317,
-    "mae": 0.28570377694135035,
-    "r2": 0.8152658220711643
+    "rmse": 0.41721178770233996,
+    "mae": 0.27865701411061855,
+    "r2": 0.8184409569287217
 }

@@ -8,12 +8,13 @@ This document tracks the live progression of the **California Housing Predictor*
 
 We track our model versions using Hugging Face Git tags and local metrics tracking. Below is the full performance progression across Random Forest and XGBoost iterations.
 
-| Version | Status | Model Architecture | Key Hyperparameters / Feature Changes | RMSE (Lower = Better) | MAE | $R^2$ | HF Tag |
+| Version | Status | Model Architecture | Key Hyperparameters / Feature Changes | RMSE (Lower = Better) | MAE | $R^2$ (Higher = Better) | HF Tag |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`v1.0`** | Baseline | Random Forest | 50 Trees, Default Depth | `0.5064` | `0.3297` | `0.8042` | `v1.0` |
 | **`v1.1`** | Optimized | Random Forest | 200 Trees, `max_depth=25` (`GridSearchCV`) | `0.5043` | `0.3267` | `0.8058` | `v1.1` |
 | **`v1.2`** | RF Active | Random Forest | Engineered Ratios + Outlier Capping Cleaned | `0.4646` | `0.3116` | `0.7748` | `v1.2` |
-| **`v2.0`** | 🟢 **ACTIVE** | XGBoost Regressor | Sequential Boosting (300 Trees, `lr=0.05`) | **`0.4208`** | **`0.2857`** | **`0.8153`** | `v2.0` |
+| **`v2.0`** | XGB Baseline | XGBoost Regressor | Sequential Boosting (300 Trees, `lr=0.05`) | `0.4208` | `0.2857` | `0.8153` | `v2.0` |
+| **`v2.1`** | 🟢 **ACTIVE** | XGBoost Regressor | Tuned via `RandomizedSearchCV` (500 Trees, `subsample=0.9`) | **`0.4172`** | **`0.2786`** | **`0.8184`** | `v2.1` |
 
 ---
 
@@ -42,9 +43,9 @@ flowchart TD
 
 ---
 
-## ⚡ Architecture Section 2: Major Version 2.0 (XGBoost Gradient Boosting)
+## ⚡ Architecture Section 2: Major Version 2.x (XGBoost Gradient Boosting)
 
-Our currently active flagship model (`v2.0`) utilizes **Gradient Boosted Decision Trees (GBDT)**. Unlike Random Forest where trees are built independently in parallel, XGBoost builds trees **sequentially**, where each new tree specifically learns to correct the residual errors made by the previous trees.
+Our currently active flagship model (`v2.1`) utilizes **Hyperparameter-Tuned Gradient Boosted Decision Trees (GBDT)**. Unlike Random Forest where trees are built independently in parallel, XGBoost builds trees **sequentially**, where each new tree specifically learns to correct the residual errors made by the previous trees.
 
 ```mermaid
 flowchart TD
@@ -59,15 +60,15 @@ flowchart TD
         Tree2 --> Res2["Calculate Residual Errors 2"]
         Res2 --> Tree3["Tree 3 (Fits on Residuals 2)"]
         
-        Tree3 --> Loop["... Repeat for 300 Trees ..."]
+        Tree3 --> Loop["... Repeat for 500 Tuned Trees ..."]
     end
 
     %% Summation & Shrinkage
-    Loop --> Sum["Weighted Sum of All Trees\nOutput = Tree1 + lr * Tree2 + lr * Tree3 + ... + lr * Tree300"]
-    Sum --> FinalXGB["Final XGBoost Prediction\nRMSE: 0.4208"]
+    Loop --> Sum["Weighted Sum of All Trees\nOutput = Tree1 + 0.05 * Tree2 + 0.05 * Tree3 + ... + 0.05 * Tree500"]
+    Sum --> FinalXGB["Final XGBoost Prediction\nRMSE: 0.4172 | R²: 0.8184"]
 ```
 
-### Why v2.0 XGBoost Achieved the Best Performance
-1. **Sequential Error Minimization:** Rather than averaging random guesses, each of the 300 trees directly targets the prediction error of the ensemble before it.
-2. **Learning Rate Shrinkage (`lr=0.05`):** Scales the contribution of each tree, preventing individual trees from dominating the model and avoiding overfitting.
-3. **Subsampling (`subsample=0.8`, `colsample_bytree=0.8`):** Prevents individual features from over-influencing splits, resulting in a dramatic drop in RMSE to **0.4208** (our best score yet!).
+### Key Breakthroughs in v2.1 Optimization
+1. **Higher Estimators (`n_estimators=500`):** Expanded from 300 to 500 trees while maintaining a conservative learning rate (`lr=0.05`), allowing fine-grained convergence.
+2. **Subsampling Tuning (`subsample=0.9`, `colsample_bytree=0.8`):** 90% row sampling per tree provided the ideal regularization balance.
+3. **Record-Breaking Error Reduction:** Achieved our project's lowest prediction error to date (**RMSE: 0.4172** and **MAE: 0.2786**).

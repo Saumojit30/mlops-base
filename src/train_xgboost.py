@@ -3,7 +3,7 @@ import numpy as np
 import os
 import joblib
 import json
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
@@ -22,7 +22,7 @@ def engineer_features(df):
     return df_copy
 
 def train_model():
-    print("Loading raw data for XGBoost (v2.0)...")
+    print("Loading raw data for XGBoost (v2.1 Hyperparameter Tuning)...")
     df = pd.read_csv("data/raw/housing.csv")
     
     print("Applying target cleaning (removing 500k ceiling capping)...")
@@ -41,49 +41,58 @@ def train_model():
         transformers=[('num', StandardScaler(), numeric_features)]
     )
 
-    # Define XGBoost Regressor Pipeline
     pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('regressor', XGBRegressor(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=42,
-            n_jobs=-1
-        ))
+        ('regressor', XGBRegressor(random_state=42, n_jobs=-1))
     ])
 
-    print("Training XGBoost Regressor model (v2.0)...")
-    pipeline.fit(X_train, y_train)
+    # Search space for v2.1 XGBoost Hyperparameter Optimization
+    param_distributions = {
+        'regressor__n_estimators': [300, 500],
+        'regressor__learning_rate': [0.03, 0.05, 0.08],
+        'regressor__max_depth': [5, 6, 8],
+        'regressor__subsample': [0.7, 0.8, 0.9],
+        'regressor__colsample_bytree': [0.7, 0.8, 0.9],
+        'regressor__gamma': [0, 0.1]
+    }
 
-    print("Evaluating v2.0 XGBoost model on test set...")
-    preds = pipeline.predict(X_test)
+    print("Running RandomizedSearchCV to optimize XGBoost hyperparameters...")
+    search = RandomizedSearchCV(
+        pipeline,
+        param_distributions=param_distributions,
+        n_iter=10,
+        cv=3,
+        scoring='neg_mean_squared_error',
+        random_state=42,
+        n_jobs=-1,
+        verbose=1
+    )
+
+    search.fit(X_train, y_train)
+
+    best_pipeline = search.best_estimator_
+    print(f"Best XGBoost Hyperparameters: {search.best_params_}")
+
+    print("Evaluating v2.1 optimized XGBoost model on test set...")
+    preds = best_pipeline.predict(X_test)
     metrics = {
-        "version": "v2.0",
-        "algorithm": "XGBoost Regressor",
-        "params": {
-            "n_estimators": 300,
-            "learning_rate": 0.05,
-            "max_depth": 6,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8
-        },
+        "version": "v2.1",
+        "algorithm": "XGBoost Regressor (Tuned)",
+        "best_params": search.best_params_,
         "rmse": float(np.sqrt(mean_squared_error(y_test, preds))),
         "mae": float(mean_absolute_error(y_test, preds)),
         "r2": float(r2_score(y_test, preds))
     }
-    print(f"v2.0 XGBoost Metrics: {metrics}")
+    print(f"v2.1 XGBoost Metrics: {metrics}")
 
-    print("Saving v2.0 XGBoost model and metrics...")
+    print("Saving v2.1 XGBoost model and metrics...")
     os.makedirs("models", exist_ok=True)
-    joblib.dump(pipeline, "models/xgb_model.joblib")
+    joblib.dump(best_pipeline, "models/xgb_model.joblib")
     
     with open("models/xgb_metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
         
-    print("Done! v2.0 Model saved to models/xgb_model.joblib")
+    print("Done! v2.1 Model saved to models/xgb_model.joblib")
 
 if __name__ == "__main__":
     train_model()
