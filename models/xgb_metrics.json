@@ -1,0 +1,14 @@
+{
+    "version": "v2.0",
+    "algorithm": "XGBoost Regressor",
+    "params": {
+        "n_estimators": 300,
+        "learning_rate": 0.05,
+        "max_depth": 6,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8
+    },
+    "rmse": 0.42084411056518317,
+    "mae": 0.28570377694135035,
+    "r2": 0.8152658220711643
+}
