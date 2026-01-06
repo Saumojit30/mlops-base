@@ -7,39 +7,40 @@ from huggingface_hub import hf_hub_download
 # ==========================================
 # CONFIGURATION
 # ==========================================
-# Set to True when you are ready to deploy!
 USE_HUGGINGFACE_MODEL = False 
-
-# Replace with your Hugging Face username and model repository name
 HF_REPO_ID = "Jit0777/california-housing-model"
-
-# The specific version (Git tag) you want to pull from Hugging Face
-HF_MODEL_VERSION = "v1.0" 
+HF_MODEL_VERSION = "v2.0" 
 # ==========================================
 
+# Pre-load local models
+models = {}
 try:
     if USE_HUGGINGFACE_MODEL:
-        print(f"Downloading model version '{HF_MODEL_VERSION}' from Hugging Face...")
-        model_path = hf_hub_download(
-            repo_id=HF_REPO_ID, 
-            filename="rf_model.joblib", 
-            revision=HF_MODEL_VERSION
-        )
-        model = joblib.load(model_path)
-        print("Hugging Face model loaded successfully!")
+        print(f"Downloading XGBoost model version '{HF_MODEL_VERSION}' from Hugging Face...")
+        xgb_path = hf_hub_download(repo_id=HF_REPO_ID, filename="xgb_model.joblib", revision=HF_MODEL_VERSION)
+        rf_path = hf_hub_download(repo_id=HF_REPO_ID, filename="rf_model.joblib", revision="v1.2")
+        models["⚡ XGBoost Regressor (v2.0 - Recommended)"] = joblib.load(xgb_path)
+        models["🌲 Random Forest Regressor (v1.2)"] = joblib.load(rf_path)
     else:
-        print("Loading local model...")
-        model = joblib.load("models/rf_model.joblib")
-        print("Local model loaded successfully.")
+        print("Loading local model weights...")
+        if os.path.exists("models/xgb_model.joblib"):
+            models["⚡ XGBoost Regressor (v2.0 - Recommended)"] = joblib.load("models/xgb_model.joblib")
+        if os.path.exists("models/rf_model.joblib"):
+            models["🌲 Random Forest Regressor (v1.2)"] = joblib.load("models/rf_model.joblib")
+        print("Loaded local models:", list(models.keys()))
 except Exception as e:
-    model = None
-    print(f"Error loading model: {e}")
+    print(f"Error loading models: {e}")
 
-def predict_price(med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occup, latitude, longitude):
-    if model is None:
-        return "Model not found! Please check configuration."
+def predict_price(model_choice, med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occup, latitude, longitude):
+    selected_model = models.get(model_choice)
+    if selected_model is None:
+        return "Selected model not loaded!"
     
-    # Create a dataframe for the input data to match the pipeline's expected format
+    # Clean capping and engineer features to match pipeline input
+    rooms_per_household = ave_rooms / ave_occup if ave_occup != 0 else 0
+    bedrooms_per_room = ave_bedrms / ave_rooms if ave_rooms != 0 else 0
+    population_per_household = population / ave_occup if ave_occup != 0 else 0
+
     input_data = pd.DataFrame({
         "MedInc": [med_inc],
         "HouseAge": [house_age],
@@ -48,13 +49,13 @@ def predict_price(med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occ
         "Population": [population],
         "AveOccup": [ave_occup],
         "Latitude": [latitude],
-        "Longitude": [longitude]
+        "Longitude": [longitude],
+        "RoomsPerHousehold": [rooms_per_household],
+        "BedroomsPerRoom": [bedrooms_per_room],
+        "PopulationPerHousehold": [population_per_household]
     })
     
-    # Make prediction
-    prediction = model.predict(input_data)[0]
-    
-    # The target in the California housing dataset is expressed in hundreds of thousands of dollars ($100,000)
+    prediction = selected_model.predict(input_data)[0]
     estimated_price = prediction * 100000 
     
     return f"${estimated_price:,.2f}"
@@ -64,12 +65,19 @@ with gr.Blocks(title="California House Price Predictor") as demo:
     gr.Markdown("# 🏡 California House Price Predictor")
     
     if USE_HUGGINGFACE_MODEL:
-        gr.Markdown(f"**Status:** Running from Hugging Face Cloud (Version: `{HF_MODEL_VERSION}`)")
+        gr.Markdown(f"**Status:** Connected to Hugging Face Hub (`{HF_REPO_ID}`)")
     else:
-        gr.Markdown("**Status:** Running Locally")
+        gr.Markdown("**Status:** Running Locally with Dynamic Model Selection")
         
-    gr.Markdown("Enter the characteristics of a neighborhood to predict the median house value.")
+    gr.Markdown("Select a model architecture and enter neighborhood features to predict the median house value.")
     
+    with gr.Row():
+        model_dropdown = gr.Dropdown(
+            choices=list(models.keys()), 
+            value=list(models.keys())[0] if models else None, 
+            label="🤖 Choose Machine Learning Model Architecture"
+        )
+
     with gr.Row():
         with gr.Column():
             med_inc = gr.Slider(0, 15, value=3.5, label="Median Income (in $10,000s)")
@@ -88,7 +96,7 @@ with gr.Blocks(title="California House Price Predictor") as demo:
     
     predict_btn.click(
         fn=predict_price,
-        inputs=[med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occup, latitude, longitude],
+        inputs=[model_dropdown, med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occup, latitude, longitude],
         outputs=output
     )
 

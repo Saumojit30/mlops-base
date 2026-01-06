@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--file_path", 
         type=str, 
-        default="models/rf_model.joblib",
+        default="models/xgb_model.joblib",
         help="Path to the local model file"
     )
     
