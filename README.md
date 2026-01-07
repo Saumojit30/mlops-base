@@ -1,6 +1,7 @@
 # California Housing Price Predictor — End-to-End MLOps Pipeline
 
 [![Machine Learning CI Pipeline](https://github.com/Saumojit30/mlops-base/actions/workflows/ci.yml/badge.svg)](https://github.com/Saumojit30/mlops-base/actions/workflows/ci.yml)
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Live%20Demo-blue)](https://huggingface.co/spaces/Jit0777/california-housing-predictor)
 [![Hugging Face Model](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model%20Hub-yellow)](https://huggingface.co/Jit0777/california-housing-model)
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.13-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
