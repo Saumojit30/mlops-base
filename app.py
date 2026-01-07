@@ -138,4 +138,4 @@ with gr.Blocks(title="California House Price Predictor") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(ssr=False)
+    demo.launch()
