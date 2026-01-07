@@ -7,24 +7,32 @@ from huggingface_hub import hf_hub_download
 # ==========================================
 # CONFIGURATION
 # ==========================================
-USE_HUGGINGFACE_MODEL = False 
 HF_REPO_ID = "Jit0777/california-housing-model"
-HF_MODEL_VERSION = "v2.0" 
+HF_MODEL_VERSION = "v2.1" 
+
+# Auto-detect execution environment:
+# If running inside Hugging Face Spaces (SPACE_ID env var present) or local models missing,
+# automatically stream weights from Hugging Face Model Hub!
+IS_HF_SPACE = "SPACE_ID" in os.environ
+USE_HUGGINGFACE_MODEL = IS_HF_SPACE or not (
+    os.path.exists("models/xgb_model.joblib") and os.path.exists("models/rf_model.joblib")
+)
 # ==========================================
 
-# Pre-load local models
+# Load models
 models = {}
 try:
     if USE_HUGGINGFACE_MODEL:
-        print(f"Downloading XGBoost model version '{HF_MODEL_VERSION}' from Hugging Face...")
+        print(f"Connecting to Hugging Face Model Hub ({HF_REPO_ID})...")
         xgb_path = hf_hub_download(repo_id=HF_REPO_ID, filename="xgb_model.joblib", revision=HF_MODEL_VERSION)
         rf_path = hf_hub_download(repo_id=HF_REPO_ID, filename="rf_model.joblib", revision="v1.2")
-        models["⚡ XGBoost Regressor (v2.0 - Recommended)"] = joblib.load(xgb_path)
+        models["⚡ XGBoost Regressor (v2.1 - Recommended)"] = joblib.load(xgb_path)
         models["🌲 Random Forest Regressor (v1.2)"] = joblib.load(rf_path)
+        print("Successfully loaded cloud models from Hugging Face Model Hub.")
     else:
-        print("Loading local model weights...")
+        print("Loading local model weights from models/ directory...")
         if os.path.exists("models/xgb_model.joblib"):
-            models["⚡ XGBoost Regressor (v2.0 - Recommended)"] = joblib.load("models/xgb_model.joblib")
+            models["⚡ XGBoost Regressor (v2.1 - Recommended)"] = joblib.load("models/xgb_model.joblib")
         if os.path.exists("models/rf_model.joblib"):
             models["🌲 Random Forest Regressor (v1.2)"] = joblib.load("models/rf_model.joblib")
         print("Loaded local models:", list(models.keys()))
@@ -36,7 +44,7 @@ def predict_price(model_choice, med_inc, house_age, ave_rooms, ave_bedrms, popul
     if selected_model is None:
         return "Selected model not loaded!"
     
-    # Clean capping and engineer features to match pipeline input
+    # Calculate engineered ratios matching pipeline inputs
     rooms_per_household = ave_rooms / ave_occup if ave_occup != 0 else 0
     bedrooms_per_room = ave_bedrms / ave_rooms if ave_rooms != 0 else 0
     population_per_household = population / ave_occup if ave_occup != 0 else 0
@@ -62,14 +70,14 @@ def predict_price(model_choice, med_inc, house_age, ave_rooms, ave_bedrms, popul
 
 # Create Gradio Interface
 with gr.Blocks(title="California House Price Predictor") as demo:
-    gr.Markdown("# 🏡 California House Price Predictor")
+    gr.Markdown("# 🏡 California House Price Predictor — MLOps Showcase")
     
-    if USE_HUGGINGFACE_MODEL:
-        gr.Markdown(f"**Status:** Connected to Hugging Face Hub (`{HF_REPO_ID}`)")
+    if IS_HF_SPACE or USE_HUGGINGFACE_MODEL:
+        gr.Markdown(f"**Deployment Status:** 🌐 Live on Hugging Face Spaces | **Model Hub:** `{HF_REPO_ID}`")
     else:
-        gr.Markdown("**Status:** Running Locally with Dynamic Model Selection")
+        gr.Markdown("**Deployment Status:** 💻 Running Locally | **Models:** Local Artifacts")
         
-    gr.Markdown("Select a model architecture and enter neighborhood features to predict the median house value.")
+    gr.Markdown("Select an algorithm architecture and enter neighborhood features to predict the median house value.")
     
     with gr.Row():
         model_dropdown = gr.Dropdown(
