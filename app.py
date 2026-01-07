@@ -2,7 +2,6 @@ import gradio as gr
 import joblib
 import pandas as pd
 import os
-import time
 from huggingface_hub import hf_hub_download
 
 # ==========================================
@@ -126,6 +125,4 @@ with gr.Blocks(title="California House Price Predictor") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
-    while True:
-        time.sleep(3600)
+    demo.launch()
