@@ -5,3 +5,4 @@ joblib
 gradio
 huggingface_hub
 xgboost
+pytest
