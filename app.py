@@ -4,6 +4,18 @@ import pandas as pd
 import os
 from huggingface_hub import hf_hub_download
 
+# Support ZeroGPU environment if available
+try:
+    import spaces
+    has_spaces = True
+except ImportError:
+    has_spaces = False
+
+def gpu_decorator(fn):
+    if has_spaces:
+        return spaces.GPU(fn)
+    return fn
+
 # ==========================================
 # CONFIGURATION
 # ==========================================
@@ -55,6 +67,7 @@ def get_model(model_name):
     print(f"Successfully loaded {model_name}!")
     return loaded_models[model_name]
 
+@gpu_decorator
 def predict_price(model_choice, med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occup, latitude, longitude):
     selected_model = get_model(model_choice)
     if selected_model is None:
@@ -125,4 +138,4 @@ with gr.Blocks(title="California House Price Predictor") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(ssr=False)
