@@ -11,21 +11,28 @@ HF_REPO_ID = "Jit0777/california-housing-model"
 HF_MODEL_VERSION = "v2.1" 
 
 # Auto-detect execution environment:
-# If running inside Hugging Face Spaces (SPACE_ID env var present) or local models missing,
-# automatically stream weights from Hugging Face Model Hub!
 IS_HF_SPACE = "SPACE_ID" in os.environ
 USE_HUGGINGFACE_MODEL = IS_HF_SPACE or not (
     os.path.exists("models/xgb_model.joblib") and os.path.exists("models/rf_model.joblib")
 )
 # ==========================================
 
+def safe_download(filename, revision=None):
+    """Safely downloads model artifact with automatic fallback to main branch if tag not found."""
+    try:
+        if revision:
+            return hf_hub_download(repo_id=HF_REPO_ID, filename=filename, revision=revision)
+    except Exception as e:
+        print(f"Tag {revision} not found or failed for {filename}, falling back to default branch: {e}")
+    return hf_hub_download(repo_id=HF_REPO_ID, filename=filename)
+
 # Load models
 models = {}
 try:
     if USE_HUGGINGFACE_MODEL:
         print(f"Connecting to Hugging Face Model Hub ({HF_REPO_ID})...")
-        xgb_path = hf_hub_download(repo_id=HF_REPO_ID, filename="xgb_model.joblib", revision=HF_MODEL_VERSION)
-        rf_path = hf_hub_download(repo_id=HF_REPO_ID, filename="rf_model.joblib", revision="v1.2")
+        xgb_path = safe_download("xgb_model.joblib", revision=HF_MODEL_VERSION)
+        rf_path = safe_download("rf_model.joblib", revision="v1.2")
         models["⚡ XGBoost Regressor (v2.1 - Recommended)"] = joblib.load(xgb_path)
         models["🌲 Random Forest Regressor (v1.2)"] = joblib.load(rf_path)
         print("Successfully loaded cloud models from Hugging Face Model Hub.")
@@ -42,7 +49,7 @@ except Exception as e:
 def predict_price(model_choice, med_inc, house_age, ave_rooms, ave_bedrms, population, ave_occup, latitude, longitude):
     selected_model = models.get(model_choice)
     if selected_model is None:
-        return "Selected model not loaded!"
+        return "Selected model not loaded! Please check model configuration."
     
     # Calculate engineered ratios matching pipeline inputs
     rooms_per_household = ave_rooms / ave_occup if ave_occup != 0 else 0
