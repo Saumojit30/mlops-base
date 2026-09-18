@@ -2,7 +2,12 @@ import os
 import json
 import pytest
 from fastapi.testclient import TestClient
+from tests.test_models import get_or_create_model
 from src.api import app, INFERENCE_LOG_FILE
+
+# Ensure test models are primed before API tests execute
+get_or_create_model("xgb_model.joblib")
+get_or_create_model("rf_model.joblib")
 
 client = TestClient(app)
 
