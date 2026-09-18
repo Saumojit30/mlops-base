@@ -23,3 +23,11 @@ models/*
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+
+# Runtime logs & dynamic reports
+logs/*.jsonl
+!logs/.gitkeep
+reports/*.json
+reports/*.md
+!reports/.gitkeep

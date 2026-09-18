@@ -21,16 +21,23 @@
 - [Key Engineering Highlights](#-key-engineering-highlights)
 - [End-to-End System Architecture](#-end-to-end-system-architecture)
 - [Model Progression & Benchmark](#-model-progression--benchmark)
+- [Level 2 MLOps: Scalability, Drift Monitoring & Continuous Training](#-level-2-mlops-autonomous-operations)
+  - [1. High-Concurrency REST Microservice (FastAPI)](#1-high-concurrency-rest-microservice-fastapi)
+  - [2. Statistical Data & Concept Drift Monitoring](#2-statistical-data--concept-drift-monitoring)
+  - [3. Continuous Training (CT) & Champion vs. Challenger Retraining](#3-continuous-training-ct--champion-vs-challenger-retraining)
 - [Repository Structure](#-repository-structure)
 - [Quickstart Guide](#-quickstart-guide)
-  - [Local Environment Setup](#1-local-environment-setup)
-  - [Data Collection & Pipeline Execution](#2-data-collection--pipeline-execution)
-  - [Automated Testing Suite](#3-automated-testing-suite)
-  - [Serving Web Interface](#4-serving-web-interface)
+  - [1. Local Environment Setup](#1-local-environment-setup)
+  - [2. Data Collection & Pipeline Execution](#2-data-collection--pipeline-execution)
+  - [3. High-Throughput REST API (FastAPI)](#3-high-throughput-rest-api-fastapi)
+  - [4. Statistical Drift Monitoring](#4-statistical-drift-monitoring)
+  - [5. Automated Continuous Retraining](#5-automated-continuous-retraining)
+  - [6. Automated Testing Suite](#6-automated-testing-suite)
+  - [7. Interactive Web Interface (Gradio)](#7-interactive-web-interface-gradio)
 - [Containerization (Docker)](#-containerization-docker)
 - [Cloud Model Registry (Hugging Face Hub)](#-cloud-model-registry-hugging-face-hub)
 - [Production Deployment (Hugging Face Spaces)](#-production-deployment-hugging-face-spaces)
-- [MLOps Principles Implemented](#-mlops-principles-implemented)
+- [MLOps Maturity Matrix](#-mlops-maturity-matrix)
 - [FAQ & Engineering Insights](#-faq--engineering-insights)
 - [License](#-license)
 
@@ -140,37 +147,95 @@ Every iteration was logged with metric tracking (`models/*metrics.json`) and ver
 
 ---
 
+## 🚀 Level 2 MLOps: Autonomous Operations
+
+Moving beyond Level 1 (automated pipeline runs and manual deployment), this repository delivers **Level 2 MLOps: Autonomous Continuous Operations**:
+
+```mermaid
+flowchart LR
+    subgraph Serving["1. Scalable Serving"]
+        API["FastAPI Microservice\n(src/api.py)"] --> Ingest["Async Inference Logger\n(logs/inference_logs.jsonl)"]
+    end
+
+    subgraph Drift["2. Drift Engine"]
+        Ingest --> Monitor["Statistical Drift Engine\n(src/monitor_drift.py)\n• Two-Sample KS-Test\n• Population Stability Index"]
+        Monitor --> DriftAlert{"Drift Detected?\n(PSI >= 0.25 | p < 0.05)"}
+    end
+
+    subgraph CT["3. Continuous Training (CT)"]
+        DriftAlert -->|Yes| Retrain["Champion vs. Challenger\n(src/continuous_training.py)"]
+        Retrain --> Gate{"Challenger RMSE < Champion RMSE?"}
+        Gate -->|Promote| Deploy["Promote New Model\nUpdate Registry"]
+        Gate -->|Reject| Keep["Retain Active Champion"]
+    end
+```
+
+### 1. High-Concurrency REST Microservice (FastAPI)
+* **Preloaded In-Memory Lifespan:** Zero per-request disk I/O; models are loaded once during ASGI lifespan startup.
+* **Strict Pydantic Contracts:** Schema validation ensuring valid float bounds, non-null values, and automated HTTP 422 descriptive error payloads.
+* **Asynchronous Batch Processing:** Dedicated `/predict/batch` endpoint delivering vectorized matrix predictions in sub-millisecond latencies.
+* **Non-Blocking Background Logging:** Uses `BackgroundTasks` to stream live inference payloads and predictions to `logs/inference_logs.jsonl` without stalling the client response loop.
+* **Interactive OpenAPI / Swagger Documentation:** Automatically available at `http://localhost:8000/docs`.
+
+### 2. Statistical Data & Concept Drift Monitoring
+* **Non-Parametric Two-Sample Kolmogorov-Smirnov (KS) Test:** Compares cumulative distribution functions between training baseline and incoming production batches ($p < 0.05$ flags statistical distribution shift).
+* **Population Stability Index (PSI):** Quantifies magnitude of population drift across equal-frequency quantiles ($PSI \ge 0.25$ indicates critical drift).
+* **Automated Audit Reports:** Emits structured machine-readable JSON summaries (`reports/drift_report.json`) and GitHub-flavored Markdown matrices (`reports/drift_report.md`).
+
+### 3. Continuous Training (CT) & Champion vs. Challenger Retraining
+* **Unbiased Arena Evaluation:** Retrains a fresh Challenger model and directly evaluates it against the active Champion on an identical held-out test split.
+* **Automated Promotion Gating:** The candidate Challenger is strictly promoted if and only if:
+  $$\text{RMSE}_{\text{challenger}} < \text{RMSE}_{\text{champion}} \times (1 - \text{min\_improvement})$$
+* **Automated Rollback & Audit Trail:** Archives the prior champion (`models/xgb_model_previous_champion.joblib`), updates version tags in `models/xgb_metrics.json`, and records decision rationale in `reports/retraining_summary.json`.
+* **Scheduled GitHub Actions Workflow:** Fully orchestrated via `.github/workflows/continuous_training.yml` running on weekly schedules and manual dispatches.
+
+---
+
 ## 📁 Repository Structure
 
 ```text
 mlops-base/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml              # GitHub Actions CI workflow (Pytest on Push/PR)
+│       ├── ci.yml                     # GitHub Actions CI (20 automated tests on push/PR)
+│       └── continuous_training.yml    # Continuous Training & Drift Monitoring workflow
 ├── data/
 │   └── raw/
-│       └── housing.csv         # Raw California Housing dataset
+│       └── housing.csv                # Baseline California Housing dataset
+├── logs/
+│   └── inference_logs.jsonl           # Production inference audit logs (JSON Lines)
 ├── models/
-│   ├── rf_model.joblib         # Random Forest serialized weights (v1.2) [Git-Ignored]
-│   ├── rf_metrics.json         # Random Forest evaluation metrics [Git-Tracked]
-│   ├── xgb_model.joblib        # XGBoost serialized weights (v2.1) [Git-Ignored]
-│   └── xgb_metrics.json        # XGBoost evaluation metrics [Git-Tracked]
+│   ├── rf_model.joblib                # Random Forest weights (v1.2) [Git-Ignored]
+│   ├── rf_metrics.json                # Random Forest evaluation metrics [Git-Tracked]
+│   ├── xgb_model.joblib               # Active Champion XGBoost weights (v2.1) [Git-Ignored]
+│   └── xgb_metrics.json               # Champion metadata & evaluation metrics [Git-Tracked]
+├── reports/
+│   ├── drift_report.json              # Statistical KS/PSI drift evaluation summary
+│   ├── drift_report.md                # Markdown drift audit matrix
+│   ├── retraining_summary.json        # Champion vs. Challenger tournament log
+│   └── retraining_summary.md          # Continuous Training markdown report
 ├── src/
-│   ├── data_collection.py      # Data ingestion & schema validation script
-│   ├── train_random_forest.py  # Isolated Random Forest training & tuning pipeline
-│   └── train_xgboost.py        # Isolated XGBoost GBDT training & tuning pipeline
+│   ├── api.py                         # High-concurrency FastAPI microservice & logger
+│   ├── continuous_training.py         # Champion vs Challenger CT pipeline & promotion gate
+│   ├── data_collection.py             # Data ingestion & schema validation
+│   ├── monitor_drift.py               # Two-sample KS-test & PSI drift detection engine
+│   ├── train_random_forest.py         # Isolated Random Forest training & tuning pipeline
+│   └── train_xgboost.py               # Isolated XGBoost GBDT training & tuning pipeline
 ├── tests/
-│   ├── __init__.py             # Test package initialization
-│   ├── test_data.py            # Dataset existence, row counts, and null integrity tests
-│   ├── test_features.py        # Unit validation of feature engineering mathematical ratios
-│   └── test_models.py          # Hermetic model loading & inference output verification
-├── app.py                      # Production Gradio Web UI with dynamic model selector
-├── upload_model.py             # CLI utility for automated Hugging Face uploads & git tagging
-├── MODEL_CARD.md               # Technical Model Card, Mermaid diagrams & progression roadmap
-├── Dockerfile                  # Production container definition (Python 3.10-slim)
-├── .dockerignore               # Container build exclusions (venv, git, cache)
-├── requirements.txt            # Pinned production & development dependencies
-└── .gitignore                  # Strict Git rules preventing heavy binary commits
+│   ├── __init__.py                    # Test package initialization
+│   ├── test_api.py                    # FastAPI endpoint contracts, validation & batch tests
+│   ├── test_continuous_training.py    # Retraining tournament & gating logic tests
+│   ├── test_data.py                   # Dataset existence and schema integrity tests
+│   ├── test_drift.py                  # Statistical KS-test and PSI drift detection tests
+│   ├── test_features.py               # Unit tests for mathematical ratio transforms
+│   └── test_models.py                 # Hermetic model inference and non-negativity tests
+├── app.py                             # Interactive Gradio Web UI with dynamic model selector
+├── upload_model.py                    # CLI utility for Hugging Face uploads & git tagging
+├── MODEL_CARD.md                      # Technical Model Card, Mermaid diagrams & governance
+├── Dockerfile                         # Multi-target container (Gradio UI or FastAPI microservice)
+├── .dockerignore                      # Container build exclusions (venv, git, cache)
+├── requirements.txt                   # Pinned production & development dependencies
+└── .gitignore                         # Strict Git rules preventing heavy binary commits
 ```
 
 ---
@@ -200,51 +265,125 @@ pip install -r requirements.txt
 
 ### 2. Data Collection & Pipeline Execution
 
-Execute the modular pipelines independently:
+Execute the modular training pipelines:
 
 ```bash
-# Step 1: Ingest and verify raw California Housing data
+# Step 1: Ingest raw California Housing dataset
 python src/data_collection.py
 
-# Step 2: Train the Random Forest pipeline (v1.2)
+# Step 2: Train Random Forest pipeline (v1.2)
 python src/train_random_forest.py
 
-# Step 3: Train the champion XGBoost pipeline (v2.1)
+# Step 3: Train initial Champion XGBoost pipeline (v2.1)
 python src/train_xgboost.py
 ```
 
-*Outputs will be saved to `models/rf_model.joblib`, `models/xgb_model.joblib`, and their corresponding JSON metric summaries.*
+---
+
+### 3. High-Throughput REST API (FastAPI)
+
+Launch the production REST microservice with Uvicorn:
+
+```bash
+uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+* **Swagger / OpenAPI Documentation:** Navigate to [http://localhost:8000/docs](http://localhost:8000/docs).
+* **Single Prediction Request:**
+```bash
+curl -X POST "http://localhost:8000/predict" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "MedInc": 3.87,
+       "HouseAge": 28.0,
+       "AveRooms": 5.4,
+       "AveBedrms": 1.05,
+       "Population": 1425.0,
+       "AveOccup": 3.0,
+       "Latitude": 37.88,
+       "Longitude": -122.23
+     }'
+```
+*Response:*
+```json
+{
+  "predicted_price": 2.1485,
+  "unit": "$100,000s",
+  "model_version": "v2.1-champion",
+  "request_id": "4020a5c4-0610-449e-bdf0-a92c4e36504a",
+  "timestamp": "2026-09-18T08:50:00.000000Z"
+}
+```
 
 ---
 
-### 3. Automated Testing Suite
+### 4. Statistical Drift Monitoring
 
-Run the full automated test suite locally:
+Run drift analysis comparing baseline data against incoming inference logs:
+
+```bash
+# Run drift monitoring engine (with synthetic drift generator for demonstration)
+python src/monitor_drift.py --generate-drift-data
+```
+Outputs audit reports to `reports/drift_report.json` and `reports/drift_report.md`.
+
+---
+
+### 5. Automated Continuous Retraining
+
+Run the Champion vs. Challenger retraining arena:
+
+```bash
+# Evaluate Challenger against active Champion and promote if superior
+python src/continuous_training.py --min-improvement 0.0
+```
+Generates comparison audit reports in `reports/retraining_summary.json` and `reports/retraining_summary.md`.
+
+---
+
+### 6. Automated Testing Suite
+
+Execute the complete 20-test hermetic test suite across all subsystems:
 
 ```bash
 pytest -v
 ```
 
-**Expected output:**
+**Test Execution Summary:**
 ```text
-tests/test_data.py::test_data_file_exists PASSED                    [ 20%]
-tests/test_data.py::test_data_integrity PASSED                      [ 40%]
-tests/test_features.py::test_engineer_features PASSED               [ 60%]
-tests/test_models.py::test_models_exist PASSED                      [ 80%]
-tests/test_models.py::test_model_inference PASSED                   [100%]
-============================== 5 passed in 5.80s ==============================
+tests/test_api.py::test_health_check PASSED                               [  5%]
+tests/test_api.py::test_model_info PASSED                                 [ 10%]
+tests/test_api.py::test_predict_endpoint PASSED                           [ 15%]
+tests/test_api.py::test_predict_validation_error PASSED                   [ 20%]
+tests/test_api.py::test_batch_predict_endpoint PASSED                     [ 25%]
+tests/test_api.py::test_inference_logging PASSED                          [ 30%]
+tests/test_api.py::test_empty_batch_validation PASSED                     [ 35%]
+tests/test_continuous_training.py::test_engineer_features PASSED          [ 40%]
+tests/test_continuous_training.py::test_load_and_prepare_data PASSED     [ 45%]
+tests/test_continuous_training.py::test_evaluate_model PASSED             [ 50%]
+tests/test_continuous_training.py::test_continuous_training_promotion_flow PASSED [ 55%]
+tests/test_data.py::test_data_file_exists PASSED                          [ 60%]
+tests/test_data.py::test_data_integrity PASSED                            [ 65%]
+tests/test_drift.py::test_psi_identical_distributions PASSED              [ 70%]
+tests/test_drift.py::test_psi_shifted_distribution PASSED                 [ 75%]
+tests/test_drift.py::test_ks_test_detects_drift PASSED                    [ 80%]
+tests/test_drift.py::test_generate_drift_report PASSED                    [ 85%]
+tests/test_features.py::test_engineer_features PASSED                     [ 90%]
+tests/test_models.py::test_models_exist PASSED                            [ 95%]
+tests/test_models.py::test_model_inference PASSED                         [100%]
+============================== 20 passed in 14.38s =============================
 ```
 
 ---
 
-### 4. Serving Web Interface
+### 7. Interactive Web Interface (Gradio)
 
 Launch the interactive Gradio interface locally:
 
 ```bash
 python app.py
 ```
-Open **`http://127.0.0.1:7860`** in your browser. The app auto-detects local model weights and provides instant predictions with slider controls.
+Open **`http://127.0.0.1:7860`** in your browser to test interactive multi-model valuation.
 
 ---
 

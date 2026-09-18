@@ -1,8 +1,12 @@
 pandas
 numpy
+scipy
 scikit-learn
 joblib
 gradio
 huggingface_hub
 xgboost
 pytest
+fastapi
+uvicorn
+httpx

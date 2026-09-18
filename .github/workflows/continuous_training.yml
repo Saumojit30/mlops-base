@@ -1,0 +1,68 @@
+name: Level 2 MLOps Continuous Training & Drift Monitoring
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      min_improvement:
+        description: 'Minimum relative RMSE improvement required for promotion (e.g. 0.001)'
+        required: false
+        default: '0.0'
+      force_promote:
+        description: 'Force promotion of Challenger model regardless of gate'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  continuous_training_pipeline:
+    name: Run Drift Monitoring & Champion vs Challenger Showdown
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Ensure Baseline Dataset Exists
+      run: |
+        python src/data_collection.py
+
+    - name: Run Data & Concept Drift Monitoring Engine
+      run: |
+        python src/monitor_drift.py --generate-drift-data
+
+    - name: Execute Continuous Training Pipeline (Champion vs. Challenger)
+      run: |
+        EXTRA_FLAGS=""
+        if [ "${{ github.event.inputs.force_promote }}" = "true" ]; then
+          EXTRA_FLAGS="--force-promote"
+        fi
+        MIN_IMP="${{ github.event.inputs.min_improvement || '0.0' }}"
+        python src/continuous_training.py --min-improvement "$MIN_IMP" $EXTRA_FLAGS
+
+    - name: Run Full Test Suite on Updated Artifacts
+      run: |
+        pytest
+
+    - name: Upload Drift & Retraining Audit Reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: mlops-level2-reports
+        path: |
+          reports/drift_report.json
+          reports/drift_report.md
+          reports/retraining_summary.json
+          reports/retraining_summary.md

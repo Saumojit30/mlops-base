@@ -72,3 +72,44 @@ flowchart TD
 1. **Higher Estimators (`n_estimators=500`):** Expanded from 300 to 500 trees while maintaining a conservative learning rate (`lr=0.05`), allowing fine-grained convergence.
 2. **Subsampling Tuning (`subsample=0.9`, `colsample_bytree=0.8`):** 90% row sampling per tree provided the ideal regularization balance.
 3. **Record-Breaking Error Reduction:** Achieved our project's lowest prediction error to date (**RMSE: 0.4172** and **MAE: 0.2786**).
+
+---
+
+## 🔄 Architecture Section 3: Level 2 MLOps Continuous Training & Governance
+
+Level 2 MLOps automates the entire feedback loop between production inference, drift detection, and continuous model retraining.
+
+```mermaid
+flowchart TD
+    subgraph Client["Production Traffic"]
+        Request["REST API / Batch Requests"] --> FastAPI["FastAPI Microservice (src/api.py)"]
+        FastAPI --> Predict["Async Inference Pipeline"]
+        Predict --> Logs[("JSONL Inference Logs\nlogs/inference_logs.jsonl")]
+    end
+
+    subgraph Monitoring["Drift Detection Engine"]
+        Logs --> DriftMonitor["Statistical Drift Analyzer (src/monitor_drift.py)\n• Two-Sample KS-Test (p < 0.05)\n• Population Stability Index (PSI >= 0.25)"]
+        BaselineData[("Baseline Training Data")] --> DriftMonitor
+        DriftMonitor --> DriftReport["Drift Report (JSON / Markdown)"]
+        DriftMonitor -->|Drift Alert Triggered| CTTrigger["Trigger Continuous Retraining"]
+    end
+
+    subgraph CT["Continuous Training & Model Registry Gate"]
+        CTTrigger --> Retrain["Train Candidate Challenger (src/continuous_training.py)"]
+        Retrain --> Arena["Champion vs. Challenger Showdown\n(Unbiased Out-of-Sample Split)"]
+        ActiveChamp[("Active Champion: xgb_model.joblib")] --> Arena
+        
+        Arena --> Decision{"Is RMSE_Challenger < RMSE_Champion?"}
+        Decision -->|YES: Passed Gate| Promote["🎉 Promote Challenger to Champion\n• Save new xgb_model.joblib\n• Archive previous champion\n• Update xgb_metrics.json"]
+        Decision -->|NO: Rejected| Retain["⛔ Reject Challenger\n• Retain existing Champion in production\n• Log retraining_summary.json"]
+    end
+```
+
+### Statistical Gating Thresholds:
+- **Two-Sample Kolmogorov-Smirnov (KS) Test:** Evaluates cumulative distribution shift feature-by-feature; $p < 0.05$ indicates rejection of null hypothesis (distribution has shifted).
+- **Population Stability Index (PSI):** Quantifies distributional divergence:
+  - $PSI < 0.1$: Distribution is stable.
+  - $0.1 \le PSI < 0.25$: Moderate drift.
+  - $PSI \ge 0.25$: Significant drift triggering automatic pipeline retraining.
+- **Continuous Training Promotion Gate:** Challenger must achieve strictly lower RMSE than current Champion on identical held-out test splits.
+
